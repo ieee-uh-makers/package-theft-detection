@@ -49,19 +49,21 @@ class SiameseSequence(Sequence):
         seq_det = self.seq.to_deterministic()
 
         i = 0
-        while i < self.batch_size:
+        skip = 0
+        while i - skip < self.batch_size:
 
-            iidx = idx * self.batch_size + i
+            iidx = (idx * self.batch_size + i + skip) % int(self.batch_size*len(self))
 
             image = cv2.imread(self.images[iidx])
-            bboxes = SiameseSequence.load_kitti_label(image,
-                                                      scale=(image.shape[0],
-                                                             image.shape[1]),
-                                                      label=self.labels[iidx])
+            if image is None:
+                skip += 1
+                continue
+
+            bboxes = SiameseSequence.load_kitti_label(image, label=self.labels[iidx])
 
             # Online Augmentation
-            image = seq_det.augment_image(image)
-            bboxes = seq_det.augment_bounding_boxes(bboxes)
+            # image = seq_det.augment_image(image)
+            # bboxes = seq_det.augment_bounding_boxes(bboxes)
 
             # Each bounding box is a training example
             for box in bboxes.to_xyxy_array():
@@ -69,21 +71,22 @@ class SiameseSequence(Sequence):
                 siamese_images = np.zeros((2, 224, 224, 3), dtype=np.float32)
 
                 # Original box coordinates in image
-                x1, y1, x2, y2 = box
+                x1, y1, x2, y2 = box.copy()
 
                 width = x2 - x1
                 height = y2 - y1
 
                 center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
                 size = 1.5*max(width, height)
+                size_half = np.floor(size / 2)
                 motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
-                sx1 = center[0] - size / 2
-                sy1 = center[1] - size / 2
+                sx1 = center[0] - size_half
+                sy1 = center[1] - size_half
 
-                sx2 = center[0] + size / 2
-                sy2 = center[1] + size / 2
+                sx2 = center[0] + size_half
+                sy2 = center[1] + size_half
 
                 # Caclulate padding for static image
                 s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
@@ -92,11 +95,11 @@ class SiameseSequence(Sequence):
                 s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
                 s_pad_bot = int(sy2 - y2) if sy2 > y2 else 0
 
-                mx1 = center[0] - size / 2 + motion[0]
-                my1 = center[1] - size / 2 + motion[1]
+                mx1 = center[0] - size_half + motion[0]
+                my1 = center[1] - size_half + motion[1]
 
-                mx2 = center[0] + size / 2 + motion[0]
-                my2 = center[1] + size / 2 + motion[1]
+                mx2 = center[0] + size_half + motion[0]
+                my2 = center[1] + size_half + motion[1]
 
                 # Calculate padding for moving image
                 m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
@@ -119,35 +122,37 @@ class SiameseSequence(Sequence):
                 y1 += pad_top
                 y2 += pad_top
 
-                sx1 = center[0] - size / 2 + pad_left
-                sy1 = center[1] - size / 2 + pad_top
+                center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
 
-                sx2 = center[0] + size / 2 + pad_left
-                sy2 = center[1] + size / 2 + pad_top
+                sx1 = center[0] - size_half
+                sy1 = center[1] - size_half
 
-                mx1 = center[0] - size / 2 + pad_left + motion[0]
-                my1 = center[1] - size / 2 + pad_top + motion[1]
+                sx2 = center[0] + size_half
+                sy2 = center[1] + size_half
 
-                mx2 = center[0] + size / 2 + pad_left + motion[0]
-                my2 = center[1] + size / 2 + pad_left + motion[1]
+                mx1 = center[0] - size_half + motion[0]
+                my1 = center[1] - size_half + motion[1]
+
+                mx2 = center[0] + size_half + motion[0]
+                my2 = center[1] + size_half + motion[1]
 
                 # Pad the actual Image
                 image_padded = cv2.copyMakeBorder(image,
                                                   pad_top, pad_bot, pad_left, pad_right,
                                                   cv2.BORDER_CONSTANT, value=0)
 
-                image_cropped = image_padded[sy1:sy2, sx1:sx2]
+                image_cropped = image_padded[int(sy1):int(sy2), int(sx1):int(sx2)]
                 image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
                 siamese_images[0] = image_resized
 
-                image_cropped = image_padded[my1:my2, mx1:mx2]
+                image_cropped = image_padded[int(my1):int(my2), int(mx1):int(mx2)]
                 image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
                 siamese_images[1] = image_resized
 
-                batch_output[i, 0] = 100*(x1 - sx1)/width
-                batch_output[i, 1] = 100*(x2 - sx1)/width
-                batch_output[i, 2] = 100*(y1 - sy1)/height
-                batch_output[i, 3] = 100*(y2 - sy1)/height
+                batch_output[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
+                batch_output[i, 1] = 224*(y1 - my1)/(mx2 - mx1)
+                batch_output[i, 2] = 224*(x2 - mx1)/(my2 - my1)
+                batch_output[i, 3] = 224*(y2 - my1)/(my2 - my1)
 
                 # Jointly Normalize Both Images
                 siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
@@ -157,12 +162,14 @@ class SiameseSequence(Sequence):
                 batch_input_moving[i] = siamese_images[1]
 
                 i += 1
+                if i == 32:
+                    break
 
         return [batch_input_static, batch_input_moving], batch_output
 
     @staticmethod
     # KITTI Format Labels
-    def load_kitti_label(image: np.ndarray, scale, label: str):
+    def load_kitti_label(image: np.ndarray, label: str):
 
         label = open(label, 'r').read().strip()
 
@@ -173,10 +180,10 @@ class SiameseSequence(Sequence):
 
             bbox_class = fields[0]
 
-            bbox_x1 = float(fields[4]) * scale[1]
-            bbox_y1 = float(fields[5]) * scale[0]
-            bbox_x2 = float(fields[6]) * scale[1]
-            bbox_y2 = float(fields[7]) * scale[0]
+            bbox_x1 = float(fields[4]) #* scale[1]
+            bbox_y1 = float(fields[5]) #* scale[0]
+            bbox_x2 = float(fields[6]) #* scale[1]
+            bbox_y2 = float(fields[7]) #* scale[0]
 
             bbox = ia.BoundingBox(bbox_x1, bbox_y1, bbox_x2, bbox_y2, bbox_class)
             bboxes.append(bbox)
@@ -203,3 +210,42 @@ class SiameseSequence(Sequence):
             ])
         elif stage == "test":
             return iaa.Sequential([])
+
+
+def main(batch_size: int = 1):
+    import matplotlib.pyplot as plt
+
+    seq = SiameseSequence('train')
+    for bidx in range(0, len(seq)):
+
+        bins, bouts = seq.__getitem__(bidx)
+        static, moving = bins
+
+        for i in range(0, batch_size):
+
+            s = static[i]
+            m = moving[i]
+
+            bbox = bouts[i]
+
+            siamese_images = np.array([s, m])
+
+            siamese_images -= np.min(siamese_images)
+            siamese_images /= np.max(siamese_images)
+            siamese_images *= 255
+
+            siamese_images = siamese_images.astype(np.uint8)
+
+            s = siamese_images[0]
+            m = siamese_images[1]
+
+            import cv2
+            cv2.rectangle(m, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0))
+
+            plt.imshow(cv2.cvtColor(np.hstack([s, m]), cv2.COLOR_BGR2RGB))
+
+            plt.show()
+
+
+if __name__ == '__main__':
+    main()
