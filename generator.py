@@ -8,10 +8,12 @@ import numpy as np
 
 class SiameseSequence(Sequence):
     def __init__(self,
-                 path: str,
+                 source_path: str,
                  stage: str = "train",
-                 batch_size: int = 128,
+                 batch_size: int = 32,
                  ):
+
+        self.source_path = source_path
 
         self.lazy_loaded = False
 
@@ -19,10 +21,10 @@ class SiameseSequence(Sequence):
         self.images_filenames = []
         self.labels = []
 
-        for r, d, f in os.walk(os.path.join(path, "images")):
+        for r, d, f in os.walk(os.path.join(source_path, "images")):
             for file in f:
                 self.images.append(os.path.join(r, file))
-                self.labels.append(os.path.join(path, "labels", (file.split(".")[0] + ".txt")))
+                self.labels.append(os.path.join(source_path, "labels", (file.split(".")[0] + ".txt")))
 
         self.batch_size = batch_size
         self.stage = stage
@@ -35,34 +37,128 @@ class SiameseSequence(Sequence):
     def __getitem__(self, idx):
         global cv2
 
+        # Lazy load OpenCV due to OpenMP issue with multiprocessing (used by fit_generator in keras)
         if not self.lazy_loaded:
             import cv2
             self.lazy_loaded = True
 
-        batch_input_left = np.zeros((self.batch_size, 224, 224, 3))
-        batch_input_right = np.zeros((self.batch_size, 224, 224, 3))
+        batch_input_static = np.zeros((self.batch_size, 224, 224, 3))
+        batch_input_moving = np.zeros((self.batch_size, 224, 224, 3))
+        batch_output = np.zeros((self.batch_size, 4))
 
         seq_det = self.seq.to_deterministic()
 
-        for i in range(0, self.batch_size):
+        i = 0
+        while i < self.batch_size:
 
-            image = cv2.imread(self.images[idx * self.batch_size + i])
+            iidx = idx * self.batch_size + i
+
+            image = cv2.imread(self.images[iidx])
             bboxes = SiameseSequence.load_kitti_label(image,
                                                       scale=(image.shape[0],
                                                              image.shape[1]),
-                                                      label=self.labels[idx * self.batch_size + i])
+                                                      label=self.labels[iidx])
+
+            # Online Augmentation
+            image = seq_det.augment_image(image)
+            bboxes = seq_det.augment_bounding_boxes(bboxes)
 
             # Each bounding box is a training example
             for box in bboxes.to_xyxy_array():
+
+                siamese_images = np.zeros((2, 224, 224, 3), dtype=np.float32)
+
+                # Original box coordinates in image
                 x1, y1, x2, y2 = box
 
+                width = x2 - x1
+                height = y2 - y1
+
                 center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
+                size = 1.5*max(width, height)
+                motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
 
+                # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
+                sx1 = center[0] - size / 2
+                sy1 = center[1] - size / 2
 
+                sx2 = center[0] + size / 2
+                sy2 = center[1] + size / 2
 
-        batch_output = np.zeros(self.batch_size, 4)
+                # Caclulate padding for static image
+                s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
+                s_pad_right = int(sx2 - x2) if sx2 > x2 else 0
 
-        return [batch_input_left, batch_input_right], batch_output
+                s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
+                s_pad_bot = int(sy2 - y2) if sy2 > y2 else 0
+
+                mx1 = center[0] - size / 2 + motion[0]
+                my1 = center[1] - size / 2 + motion[1]
+
+                mx2 = center[0] + size / 2 + motion[0]
+                my2 = center[1] + size / 2 + motion[1]
+
+                # Calculate padding for moving image
+                m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
+                m_pad_right = int(mx2 - x2) if mx2 > x2 else 0
+
+                m_pad_top = int(abs(my1)) if my1 < 0 else 0
+                m_pad_bot = int(my2 - y2) if my2 > y2 else 0
+
+                # Calculate joint padding between both images
+                pad_bot = max(s_pad_bot, m_pad_bot)
+                pad_top = max(s_pad_top, m_pad_top)
+
+                pad_left = max(s_pad_left, m_pad_left)
+                pad_right = max(s_pad_right, m_pad_right)
+
+                # Recalculate crop regions after padding
+                x1 += pad_left
+                x2 += pad_left
+
+                y1 += pad_top
+                y2 += pad_top
+
+                sx1 = center[0] - size / 2 + pad_left
+                sy1 = center[1] - size / 2 + pad_top
+
+                sx2 = center[0] + size / 2 + pad_left
+                sy2 = center[1] + size / 2 + pad_top
+
+                mx1 = center[0] - size / 2 + pad_left + motion[0]
+                my1 = center[1] - size / 2 + pad_top + motion[1]
+
+                mx2 = center[0] + size / 2 + pad_left + motion[0]
+                my2 = center[1] + size / 2 + pad_left + motion[1]
+
+                # Pad the actual Image
+                image_padded = cv2.copyMakeBorder(image,
+                                                  pad_top, pad_bot, pad_left, pad_right,
+                                                  cv2.BORDER_CONSTANT, value=0)
+
+                image_cropped = image_padded[sy1:sy2, sx1:sx2]
+                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+                siamese_images[0] = image_resized
+
+                image_cropped = image_padded[my1:my2, mx1:mx2]
+                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+                siamese_images[1] = image_resized
+
+                batch_output[i, 0] = 100*(x1 - sx1)/width
+                batch_output[i, 1] = 100*(x2 - sx1)/width
+                batch_output[i, 2] = 100*(y1 - sy1)/height
+                batch_output[i, 3] = 100*(y2 - sy1)/height
+
+                # Jointly Normalize Both Images
+                siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
+                siamese_images /= np.std(siamese_images, axis=(0, 1, 2)) + np.finfo(np.float32).eps
+
+                batch_input_static[i] = siamese_images[0]
+                batch_input_moving[i] = siamese_images[1]
+
+                i += 1
+
+        return [batch_input_static, batch_input_moving], batch_output
 
     @staticmethod
     # KITTI Format Labels
@@ -94,18 +190,15 @@ class SiameseSequence(Sequence):
         if stage == "train":
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
-                iaa.CropAndPad(px=(0, 112), sample_independently=False),
-                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
                 iaa.SomeOf((0, 3), [
                     iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
                     iaa.GaussianBlur(sigma=(0, 1.0)),
-                    iaa.AdditiveGaussianNoise(scale=0.05 * 255)
+                    iaa.AdditiveGaussianNoise(scale=0.03 * 255)
                 ])
             ])
         elif stage == "val":
             return iaa.Sequential([
-                iaa.CropAndPad(px=(0, 112), sample_independently=False),
                 iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
             ])
         elif stage == "test":

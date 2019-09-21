@@ -98,7 +98,6 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier,
                                                 strides=(2, 2), block_id=12))
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier, block_id=13))
-    siamese_layers.append(GlobalAveragePooling2D())
 
     layer_input_left = Input((224, 224, 3), name='input_left')
     layer_input_right = Input((224, 224, 3), name='input_right')
@@ -113,19 +112,50 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         x = layer(x)
     layer_output_right = x
 
-    layer_concat = Concatenate(name='regr_concat')([layer_output_left, layer_output_right])
-    layer_regr = Dense(4, name='regr')(layer_concat)
+    x = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
+
+    def namer():
+        i = 1
+        while True:
+            yield i
+            i += 1
+
+    mix_namer = namer()
+
+    x = Conv2D(64, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
+    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
+    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
+
+    x = Conv2D(32, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
+    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
+    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
+
+    x = Conv2D(16, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
+    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
+    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
+
+    x = Flatten(name='flatten')(x)
+
+    layer_regr = Dense(4, name='regr')(x)
 
     model = Model(inputs=[layer_input_left, layer_input_right],
                   outputs=layer_regr)
     model.summary()
 
     if weights == 'imagenet':
-        model.load_weights('mobilenet_2_5_224_tf_no_top.h5', by_name=True)
+        model.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
 
     if plot:
         from keras.utils import plot_model
         plot_model(model, to_file='model.png', show_shapes=True)
+
+    def R2(y_true, y_pred):
+        from keras import backend as K
+        SS_res = K.sum(K.square(y_true - y_pred))
+        SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+        return 1 - SS_res / (SS_tot + K.epsilon())
+
+    return model, ['mse'], {'regr': R2}
 
 
 if __name__ == '__main__':
