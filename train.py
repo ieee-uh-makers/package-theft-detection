@@ -48,7 +48,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     except FileExistsError:
         pass
 
-    filepath = "weights/%s-{epoch:02d}-{val_r2:.4f}.h5" % session
+    filepath = "weights/%s_epoch {epoch:02d}_r2 {val_r2:.4f}.h5" % session
     checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
     callbacks.append(checkpoint)
 

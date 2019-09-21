@@ -81,6 +81,7 @@ class SiameseSequence(Sequence):
 
                 size_half = np.round(size / 2)
                 motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
+                scale = 1 + 0.05*(2*(np.random.random() - 0.5))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
@@ -96,11 +97,11 @@ class SiameseSequence(Sequence):
                 s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
                 s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
 
-                mx1 = center[0] - size_half + motion[0]
-                my1 = center[1] - size_half + motion[1]
+                mx1 = center[0] - scale*(size_half + motion[0])
+                my1 = center[1] - scale*(size_half + motion[1])
 
-                mx2 = center[0] + size_half + motion[0]
-                my2 = center[1] + size_half + motion[1]
+                mx2 = center[0] + scale*(size_half + motion[0])
+                my2 = center[1] + scale*(size_half + motion[1])
 
                 # Calculate padding for moving image
                 m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
@@ -131,11 +132,11 @@ class SiameseSequence(Sequence):
                 sx2 = center[0] + size_half
                 sy2 = center[1] + size_half
 
-                mx1 = center[0] - size_half + motion[0]
-                my1 = center[1] - size_half + motion[1]
+                mx1 = center[0] - scale*(size_half + motion[0])
+                my1 = center[1] - scale*(size_half + motion[1])
 
-                mx2 = center[0] + size_half + motion[0]
-                my2 = center[1] + size_half + motion[1]
+                mx2 = center[0] + scale*(size_half + motion[0])
+                my2 = center[1] + scale*(size_half + motion[1])
 
                 # Pad the actual Image
                 image_padded = cv2.copyMakeBorder(image,
@@ -181,10 +182,10 @@ class SiameseSequence(Sequence):
 
             bbox_class = fields[0]
 
-            bbox_x1 = float(fields[4]) #* scale[1]
-            bbox_y1 = float(fields[5]) #* scale[0]
-            bbox_x2 = float(fields[6]) #* scale[1]
-            bbox_y2 = float(fields[7]) #* scale[0]
+            bbox_x1 = float(fields[4])
+            bbox_y1 = float(fields[5])
+            bbox_x2 = float(fields[6])
+            bbox_y2 = float(fields[7])
 
             bbox = ia.BoundingBox(bbox_x1, bbox_y1, bbox_x2, bbox_y2, bbox_class)
             bboxes.append(bbox)
@@ -199,16 +200,13 @@ class SiameseSequence(Sequence):
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
                 iaa.SomeOf((0, 3), [
-                    iaa.AddToHueAndSaturation((-10, 10)),
                     iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
                     iaa.GaussianBlur(sigma=(0, 1.0)),
                     iaa.AdditiveGaussianNoise(scale=0.03 * 255)
                 ])
             ])
         elif stage == "val":
-            return iaa.Sequential([
-                iaa.Affine(translate_percent={"x": (-0.4, 0.4), "y": (-0.4, 0.4)}),
-            ])
+            return iaa.Sequential([])
         elif stage == "test":
             return iaa.Sequential([])
 
