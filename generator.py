@@ -62,8 +62,8 @@ class SiameseSequence(Sequence):
             bboxes = SiameseSequence.load_kitti_label(image, label=self.labels[iidx])
 
             # Online Augmentation
-            # image = seq_det.augment_image(image)
-            # bboxes = seq_det.augment_bounding_boxes(bboxes)
+            image = seq_det.augment_image(image)
+            bboxes = seq_det.augment_bounding_boxes(bboxes)
 
             # Each bounding box is a training example
             for box in bboxes.to_xyxy_array():
@@ -78,8 +78,8 @@ class SiameseSequence(Sequence):
 
                 center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
                 size = 1.5*max(width, height)
-                size_half = np.floor(size / 2)
-                motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
+                size_half = np.floor(size / 2) - 1
+                motion = np.round(0.05*size*(2*(np.random.random(size=(2,)) - 0.5)))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
@@ -90,10 +90,10 @@ class SiameseSequence(Sequence):
 
                 # Caclulate padding for static image
                 s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
-                s_pad_right = int(sx2 - x2) if sx2 > x2 else 0
+                s_pad_right = int(sx2 - image.shape[1]) if sx2 > image.shape[1] else 0
 
                 s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
-                s_pad_bot = int(sy2 - y2) if sy2 > y2 else 0
+                s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
 
                 mx1 = center[0] - size_half + motion[0]
                 my1 = center[1] - size_half + motion[1]
@@ -103,10 +103,10 @@ class SiameseSequence(Sequence):
 
                 # Calculate padding for moving image
                 m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
-                m_pad_right = int(mx2 - x2) if mx2 > x2 else 0
+                m_pad_right = int(mx2 - image.shape[1]) if mx2 > image.shape[1] else 0
 
                 m_pad_top = int(abs(my1)) if my1 < 0 else 0
-                m_pad_bot = int(my2 - y2) if my2 > y2 else 0
+                m_pad_bot = int(my2 - image.shape[0]) if my2 > image.shape[0] else 0
 
                 # Calculate joint padding between both images
                 pad_bot = max(s_pad_bot, m_pad_bot)
@@ -162,7 +162,7 @@ class SiameseSequence(Sequence):
                 batch_input_moving[i] = siamese_images[1]
 
                 i += 1
-                if i == 32:
+                if i == self.batch_size:
                     break
 
         return [batch_input_static, batch_input_moving], batch_output
@@ -241,9 +241,7 @@ def main(batch_size: int = 1):
 
             import cv2
             cv2.rectangle(m, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0))
-
             plt.imshow(cv2.cvtColor(np.hstack([s, m]), cv2.COLOR_BGR2RGB))
-
             plt.show()
 
 

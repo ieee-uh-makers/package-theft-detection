@@ -114,27 +114,10 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
 
     x = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
 
-    def namer():
-        i = 1
-        while True:
-            yield i
-            i += 1
-
-    mix_namer = namer()
-
-    x = Conv2D(64, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
-    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
-    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
-
-    x = Conv2D(32, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
-    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
-    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
-
-    x = Conv2D(16, 3, activation='relu', name='mix%d_conv' % next(mix_namer), padding='valid')(x)
-    x = BatchNormalization(name='mix%d_bn' % next(mix_namer))(x)
-    x = ReLU(name='mix%d_relu' % next(mix_namer))(x)
-
     x = Flatten(name='flatten')(x)
+    x = Dense(32, activation='relu', name='dense_1')(x)
+    x = Dense(32, activation='relu', name='dense_2')(x)
+    x = Dense(32, activation='relu', name='dense_3')(x)
 
     layer_regr = Dense(4, name='regr')(x)
 

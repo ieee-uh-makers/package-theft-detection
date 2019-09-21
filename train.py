@@ -41,7 +41,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
 
     callbacks = []
 
-    model.compile(optimizer=AdaBound(lr=0.0001), clipnorm=5, loss=loss_fns, metrics=metrics)
+    model.compile(optimizer=AdaBound(lr=0.0001, clipnorm=5), loss=loss_fns, metrics=metrics)
 
     filepath = "%s-{epoch:02d}-{val_loss:.4f}.h5" % session
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
