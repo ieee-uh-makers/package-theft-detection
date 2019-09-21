@@ -132,13 +132,13 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         from keras.utils import plot_model
         plot_model(model, to_file='model.png', show_shapes=True)
 
-    def R2(y_true, y_pred):
+    def r2(y_true, y_pred):
         from keras import backend as K
         SS_res = K.sum(K.square(y_true - y_pred))
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
-    return model, ['mse'], {'regr': R2}
+    return model, ['mse'], {'regr': r2}
 
 
 if __name__ == '__main__':

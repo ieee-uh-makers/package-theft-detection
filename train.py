@@ -29,7 +29,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
-         workers: int = 8):
+         workers: int = 24):
 
     model, loss_fns, metrics = build_model()
 
@@ -43,8 +43,13 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
 
     model.compile(optimizer=AdaBound(lr=0.0001, clipnorm=5), loss=loss_fns, metrics=metrics)
 
-    filepath = "%s-{epoch:02d}-{val_loss:.4f}.h5" % session
-    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    try:
+        os.mkdir('weights')
+    except FileExistsError:
+        pass
+
+    filepath = "weights/%s-{epoch:02d}-{val_r2:.4f}.h5" % session
+    checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
     callbacks.append(checkpoint)
 
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001, verbose=1)

@@ -78,8 +78,9 @@ class SiameseSequence(Sequence):
 
                 center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
                 size = 1.5*max(width, height)
-                size_half = np.floor(size / 2) - 1
-                motion = np.round(0.05*size*(2*(np.random.random(size=(2,)) - 0.5)))
+
+                size_half = np.round(size / 2)
+                motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
