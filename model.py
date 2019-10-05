@@ -102,6 +102,8 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     layer_input_left = Input((224, 224, 3), name='input_left')
     layer_input_right = Input((224, 224, 3), name='input_right')
 
+    layer_input_discount_regr = Input(1, name='input_discount_regr')
+
     x = layer_input_left
     for layer in siamese_layers:
         x = layer(x)
@@ -120,9 +122,10 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     x = Dense(32, activation='relu', name='dense_3')(x)
 
     layer_regr = Dense(4, name='regr')(x)
+    layer_cls = Dense(1, name='cls')(x)
 
     model = Model(inputs=[layer_input_left, layer_input_right],
-                  outputs=layer_regr)
+                  outputs=[layer_regr, layer_cls])
     model.summary()
 
     if weights == 'imagenet':
@@ -138,7 +141,19 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
-    return model, ['mse'], {'regr': r2}
+    def discount_mse(x):
+        def d_mse(y_true, y_pred):
+
+            # Calculate the residual, averaging dimensions together.
+            # Should return (batch_size, 1)
+            residual = K.expand_dims(K.mean(K.square(y_true - y_pred), axis=-1), axis=-1)
+            discounted_residual = x*residual
+
+            return discounted_residual
+
+        return d_mse
+
+    return model, ['mse', 'binary_crossentropy'], {'regr': r2, 'cls': 'acc'}
 
 
 if __name__ == '__main__':
