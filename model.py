@@ -1,6 +1,7 @@
 from keras.models import Model
 from keras.layers import *
 from keras import layers
+import keras.backend as K
 
 
 def _conv_block(filters, alpha, kernel=(3, 3), strides=(1, 1)):
@@ -102,8 +103,6 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     layer_input_left = Input((224, 224, 3), name='input_left')
     layer_input_right = Input((224, 224, 3), name='input_right')
 
-    layer_input_discount_regr = Input(1, name='input_discount_regr')
-
     x = layer_input_left
     for layer in siamese_layers:
         x = layer(x)
@@ -114,15 +113,17 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         x = layer(x)
     layer_output_right = x
 
-    x = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
+    conc = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
 
-    x = Flatten(name='flatten')(x)
+    x = Flatten(name='flatten')(conc)
     x = Dense(32, activation='relu', name='dense_1')(x)
     x = Dense(32, activation='relu', name='dense_2')(x)
     x = Dense(32, activation='relu', name='dense_3')(x)
 
     layer_regr = Dense(4, name='regr')(x)
-    layer_cls = Dense(1, name='cls')(x)
+
+    layer_gap = GlobalAveragePooling2D(name='gap')(conc)
+    layer_cls = Dense(1, activation='sigmoid', name='cls')(layer_gap)
 
     model = Model(inputs=[layer_input_left, layer_input_right],
                   outputs=[layer_regr, layer_cls])

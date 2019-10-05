@@ -2,10 +2,11 @@ import os
 import plac
 import time
 
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard, EarlyStopping
 
 from model import build_model
 from adabound import AdaBound
+from rectified_adam import RectifiedAdam
 
 from generator import SiameseSequence
 
@@ -41,16 +42,19 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
 
     callbacks = []
 
-    model.compile(optimizer=AdaBound(lr=0.0001, clipnorm=5), loss=loss_fns, metrics=metrics)
+    model.compile(optimizer=RectifiedAdam(lr=0.0001), loss=loss_fns, metrics=metrics)
 
     try:
         os.mkdir('weights')
     except FileExistsError:
         pass
 
-    filepath = "weights/%s_epoch {epoch:02d}_r2 {val_r2:.4f}.h5" % session
-    checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
+    filepath = "weights/%s_epoch {epoch:02d}_r2 {val_regr_r2:.4f}.h5" % session
+    checkpoint = ModelCheckpoint(filepath, monitor='val_regr_r2', verbose=1, save_best_only=True, mode='max')
     callbacks.append(checkpoint)
+
+    early_stop = EarlyStopping(monitor='val_regr_r2', patience=10, mode='max')
+    callbacks.append(early_stop)
 
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001, verbose=1)
     callbacks.append(reduce_lr)

@@ -44,7 +44,8 @@ class SiameseSequence(Sequence):
 
         batch_input_static = np.zeros((self.batch_size, 224, 224, 3))
         batch_input_moving = np.zeros((self.batch_size, 224, 224, 3))
-        batch_output = np.zeros((self.batch_size, 4))
+        batch_output_bbox = np.zeros((self.batch_size, 4))
+        batch_output_class = np.zeros((self.batch_size, 1))
 
         seq_det = self.seq.to_deterministic()
 
@@ -66,7 +67,14 @@ class SiameseSequence(Sequence):
             bboxes = seq_det.augment_bounding_boxes(bboxes)
 
             # Each bounding box is a training example
-            for box in bboxes.to_xyxy_array():
+            for idx, box in enumerate(bboxes.to_xyxy_array()):
+
+                bbox = bboxes.bounding_boxes[idx]
+
+                if bbox.label == '/m/025dyy':
+                    batch_output_class[i] = 1
+                else:
+                    batch_output_class[i] = 0
 
                 siamese_images = np.zeros((2, 224, 224, 3), dtype=np.float32)
 
@@ -151,10 +159,10 @@ class SiameseSequence(Sequence):
                 image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
                 siamese_images[1] = image_resized
 
-                batch_output[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
-                batch_output[i, 1] = 224*(y1 - my1)/(mx2 - mx1)
-                batch_output[i, 2] = 224*(x2 - mx1)/(my2 - my1)
-                batch_output[i, 3] = 224*(y2 - my1)/(my2 - my1)
+                batch_output_bbox[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
+                batch_output_bbox[i, 1] = 224*(y1 - my1)/(mx2 - mx1)
+                batch_output_bbox[i, 2] = 224*(x2 - mx1)/(my2 - my1)
+                batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
 
                 # Jointly Normalize Both Images
                 siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
@@ -167,7 +175,7 @@ class SiameseSequence(Sequence):
                 if i == self.batch_size:
                     break
 
-        return [batch_input_static, batch_input_moving], batch_output
+        return [batch_input_static, batch_input_moving], [batch_output_bbox, batch_output_class]
 
     @staticmethod
     # KITTI Format Labels
