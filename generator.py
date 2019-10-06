@@ -84,12 +84,12 @@ class SiameseSequence(Sequence):
                 width = x2 - x1
                 height = y2 - y1
 
-                center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
-                size = 1.5*max(width, height)
+                center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
+                size = max(width, height)
 
-                size_half = np.round(size / 2)
-                motion = 0.05*size*(2*(np.random.random(size=(2,)) - 0.5))
-                scale = 1 + 0.05*(2*(np.random.random() - 0.5))
+                size_half = np.ceil(size / 2) + 1
+                motion = np.round(0.05*size*(2*(np.random.random(size=(2,)) - 0.5)))
+                scale = 1.5 + 0.05*(2*(np.random.random() - 0.5))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
@@ -105,8 +105,8 @@ class SiameseSequence(Sequence):
                 s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
                 s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
 
-                mx1 = center[0] - scale*(size_half + motion[0])
-                my1 = center[1] - scale*(size_half + motion[1])
+                mx1 = center[0] - scale*(size_half - motion[0])
+                my1 = center[1] - scale*(size_half - motion[1])
 
                 mx2 = center[0] + scale*(size_half + motion[0])
                 my2 = center[1] + scale*(size_half + motion[1])
@@ -132,7 +132,7 @@ class SiameseSequence(Sequence):
                 y1 += pad_top
                 y2 += pad_top
 
-                center = (np.array([x1, y1]) + np.array([x2, y2])) / 2
+                center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
 
                 sx1 = center[0] - size_half
                 sy1 = center[1] - size_half
@@ -140,8 +140,8 @@ class SiameseSequence(Sequence):
                 sx2 = center[0] + size_half
                 sy2 = center[1] + size_half
 
-                mx1 = center[0] - scale*(size_half + motion[0])
-                my1 = center[1] - scale*(size_half + motion[1])
+                mx1 = center[0] - scale*(size_half - motion[0])
+                my1 = center[1] - scale*(size_half - motion[1])
 
                 mx2 = center[0] + scale*(size_half + motion[0])
                 my2 = center[1] + scale*(size_half + motion[1])
@@ -160,8 +160,8 @@ class SiameseSequence(Sequence):
                 siamese_images[1] = image_resized
 
                 batch_output_bbox[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
-                batch_output_bbox[i, 1] = 224*(y1 - my1)/(mx2 - mx1)
-                batch_output_bbox[i, 2] = 224*(x2 - mx1)/(my2 - my1)
+                batch_output_bbox[i, 1] = 224*(y1 - my1)/(my2 - my1)
+                batch_output_bbox[i, 2] = 224*(x2 - mx1)/(mx2 - mx1)
                 batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
 
                 # Jointly Normalize Both Images
@@ -222,18 +222,19 @@ class SiameseSequence(Sequence):
 def main(batch_size: int = 1):
     import matplotlib.pyplot as plt
 
-    seq = SiameseSequence('train')
+    seq = SiameseSequence('train', stage='train')
     for bidx in range(0, len(seq)):
 
         bins, bouts = seq.__getitem__(bidx)
         static, moving = bins
+        bbox, cls = bouts
 
         for i in range(0, batch_size):
 
             s = static[i]
             m = moving[i]
 
-            bbox = bouts[i]
+            bbox = bbox[i]
 
             siamese_images = np.array([s, m])
 
@@ -249,6 +250,7 @@ def main(batch_size: int = 1):
             import cv2
             cv2.rectangle(m, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0))
             plt.imshow(cv2.cvtColor(np.hstack([s, m]), cv2.COLOR_BGR2RGB))
+            plt.title('Class: %d' % cls[i])
             plt.show()
 
 

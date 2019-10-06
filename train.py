@@ -42,7 +42,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
 
     callbacks = []
 
-    model.compile(optimizer=RectifiedAdam(lr=0.0001), loss=loss_fns, metrics=metrics)
+    model.compile(optimizer=RectifiedAdam(lr=0.0001, clipnorm=5.0), loss=loss_fns, metrics=metrics)
 
     try:
         os.mkdir('weights')
@@ -71,7 +71,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
                         validation_data=val_seq,
                         epochs=epochs,
                         callbacks=callbacks,
-                        use_multiprocessing=True,
+                        use_multiprocessing=False,
                         workers=workers,
                         shuffle=True)
 
