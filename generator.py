@@ -85,11 +85,11 @@ class SiameseSequence(Sequence):
                 height = y2 - y1
 
                 center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
-                size = max(width, height)
+                size = 1.25*max(width, height)
 
-                size_half = np.ceil(size / 2) + 1
+                size_half = np.ceil(size / 2)
                 motion = np.round(0.05*size*(2*(np.random.random(size=(2,)) - 0.5)))
-                scale = 1.5 + 0.05*(2*(np.random.random() - 0.5))
+                scale = 1 + 0.05*(2*(np.random.random() - 0.5))
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
@@ -119,11 +119,11 @@ class SiameseSequence(Sequence):
                 m_pad_bot = int(my2 - image.shape[0]) if my2 > image.shape[0] else 0
 
                 # Calculate joint padding between both images
-                pad_bot = max(s_pad_bot, m_pad_bot)
-                pad_top = max(s_pad_top, m_pad_top)
+                pad_bot = max(s_pad_bot, m_pad_bot) + 100
+                pad_top = max(s_pad_top, m_pad_top) + 100
 
-                pad_left = max(s_pad_left, m_pad_left)
-                pad_right = max(s_pad_right, m_pad_right)
+                pad_left = max(s_pad_left, m_pad_left) + 100
+                pad_right = max(s_pad_right, m_pad_right) + 100
 
                 # Recalculate crop regions after padding
                 x1 += pad_left
@@ -207,12 +207,14 @@ class SiameseSequence(Sequence):
         if stage == "train":
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
-                iaa.SomeOf((0, 3), [
-                    iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)}),
+                iaa.Flipud(0.5),
+                iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                           rotate=(-15, 15)),
+                iaa.SomeOf((0, 2), [
                     iaa.GaussianBlur(sigma=(0, 1.0)),
                     iaa.AdditiveGaussianNoise(scale=0.03 * 255)
                 ])
-            ])
+            ], random_order=True)
         elif stage == "val":
             return iaa.Sequential([])
         elif stage == "test":

@@ -30,7 +30,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
-         workers: int = 24):
+         workers: int = 12):
 
     model, loss_fns, metrics = build_model()
 
@@ -71,7 +71,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
                         validation_data=val_seq,
                         epochs=epochs,
                         callbacks=callbacks,
-                        use_multiprocessing=False,
+                        use_multiprocessing=True,
                         workers=workers,
                         shuffle=True)
 
