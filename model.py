@@ -74,7 +74,7 @@ def _depthwise_conv_block(pointwise_conv_filters, alpha,
     return stack
 
 
-def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot: bool = False):
+def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot: bool = False, cls: bool = False, regr: bool = True):
     siamese_layers = []
 
     siamese_layers.extend(_conv_block(32, alpha, strides=(2, 2)))
@@ -91,6 +91,7 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier,
                                                 strides=(2, 2), block_id=6))
     siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=7))
+
     siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=8))
     siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=9))
     siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=10))
@@ -115,18 +116,43 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
 
     conc = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
 
-    x = Flatten(name='flatten')(conc)
-    x = Dense(32, activation='relu', name='dense_1')(x)
-    x = Dense(32, activation='relu', name='dense_2')(x)
-    x = Dense(32, activation='relu', name='dense_3')(x)
+    gap = GlobalAveragePooling2D(name='gap')(conc)
 
-    layer_regr = Dense(4, name='regr')(x)
+    x = gap
 
-    layer_gap = GlobalAveragePooling2D(name='gap')(conc)
-    layer_cls = Dense(1, activation='sigmoid', name='cls')(layer_gap)
+    loss_fns = []
+    metrics = {}
+    outputs = []
+
+    def r2(y_true, y_pred):
+        from keras import backend as K
+        SS_res = K.sum(K.square(y_true - y_pred))
+        SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+        return 1 - SS_res / (SS_tot + K.epsilon())
+
+    if regr:
+        x = Dense(128, activation='relu', name='dense_1')(x)
+        x = Dense(128, activation='relu', name='dense_2')(x)
+        x = Dense(128, activation='relu', name='dense_3')(x)
+        layer_regr = Dense(4, name='regr')(x)
+        outputs.append(layer_regr)
+        loss_fns.append('mae')
+        metrics['regr'] = r2
+
+    if cls:
+        layer_cls = Dense(1, activation='sigmoid', name='cls')(gap)
+        outputs.append(layer_cls)
+        loss_fns.append('binary_crossentropy')
+        metrics['cls'] = 'acc'
 
     model = Model(inputs=[layer_input_left, layer_input_right],
-                  outputs=[layer_regr, layer_cls])
+                  outputs=outputs)
+
+    if cls:
+        for layer in model.layers:
+            if layer.name != 'cls':
+                layer.trainable = False
+
     model.summary()
 
     if weights == 'imagenet':
@@ -136,26 +162,8 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         from keras.utils import plot_model
         plot_model(model, to_file='model.png', show_shapes=True)
 
-    def r2(y_true, y_pred):
-        from keras import backend as K
-        SS_res = K.sum(K.square(y_true - y_pred))
-        SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
-        return 1 - SS_res / (SS_tot + K.epsilon())
-
-    def discount_mse(x):
-        def d_mse(y_true, y_pred):
-
-            # Calculate the residual, averaging dimensions together.
-            # Should return (batch_size, 1)
-            residual = K.expand_dims(K.mean(K.square(y_true - y_pred), axis=-1), axis=-1)
-            discounted_residual = x*residual
-
-            return discounted_residual
-
-        return d_mse
-
-    return model, ['mae', 'binary_crossentropy'], {'regr': r2, 'cls': 'acc'}
+    return model, loss_fns, metrics
 
 
 if __name__ == '__main__':
-    build_model()
+    build_model(cls=True)

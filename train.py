@@ -13,6 +13,7 @@ from generator import SiameseSequence
 
 @plac.annotations(
     session=('Name of the training session', 'option', 'S', str),
+    stage=('Training stage (regr or cls)', 'option', 's', str),
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
     train_path=(
@@ -25,6 +26,7 @@ from generator import SiameseSequence
     workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
+         stage: str = 'regr',
          batch_size: int = 24,
          epochs: int = 384,
          train_path: str = 'train',
@@ -32,7 +34,10 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          weights=None,
          workers: int = 12):
 
-    model, loss_fns, metrics = build_model()
+    regr = True if stage == 'regr' else False
+    cls = True if stage == 'cls' else False
+
+    model, loss_fns, metrics = build_model(regr=regr, cls=cls)
 
     if weights is not None:
         model.load_weights(weights, by_name=True)
@@ -49,14 +54,19 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     except FileExistsError:
         pass
 
-    filepath = "weights/%s_epoch {epoch:02d}_r2 {val_regr_r2:.4f}.h5" % session
-    checkpoint = ModelCheckpoint(filepath, monitor='val_regr_r2', verbose=1, save_best_only=True, mode='max')
+    if stage == 'regr':
+        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_r2:.4f}.h5" % session
+        checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
+    elif stage == 'cls':
+        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_acc:.4f}.h5" % session
+        checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+
     callbacks.append(checkpoint)
 
-    early_stop = EarlyStopping(monitor='val_regr_r2', patience=10, mode='max')
+    early_stop = EarlyStopping(monitor='val_loss', patience=10, mode='min')
     callbacks.append(early_stop)
 
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001, verbose=1)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001, verbose=1, mode='min')
     callbacks.append(reduce_lr)
 
     try:

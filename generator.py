@@ -4,6 +4,7 @@ from imgaug import augmenters as iaa
 import imgaug as ia
 from keras.utils import Sequence
 import numpy as np
+import random
 
 
 class SiameseSequence(Sequence):
@@ -11,11 +12,16 @@ class SiameseSequence(Sequence):
                  source_path: str,
                  stage: str = "train",
                  batch_size: int = 32,
+                 regr: bool = True,
+                 cls: bool = False
                  ):
 
         self.source_path = source_path
 
         self.lazy_loaded = False
+
+        self.cls = cls
+        self.regr = regr
 
         self.images = []
         self.images_filenames = []
@@ -66,116 +72,123 @@ class SiameseSequence(Sequence):
             image = seq_det.augment_image(image)
             bboxes = seq_det.augment_bounding_boxes(bboxes)
 
-            # Each bounding box is a training example
-            for idx, box in enumerate(bboxes.to_xyxy_array()):
+            bboxes_xyxy = bboxes.to_xyxy_array()
 
-                bbox = bboxes.bounding_boxes[idx]
+            idx = random.randrange(0, len(bboxes_xyxy))
+            box = bboxes_xyxy[idx]
 
-                if bbox.label == '/m/025dyy':
-                    batch_output_class[i] = 1
-                else:
-                    batch_output_class[i] = 0
+            bbox = bboxes.bounding_boxes[idx]
 
-                siamese_images = np.zeros((2, 224, 224, 3), dtype=np.float32)
+            if bbox.label == '/m/025dyy':
+                batch_output_class[i] = 1
+            else:
+                batch_output_class[i] = 0
 
-                # Original box coordinates in image
-                x1, y1, x2, y2 = box.copy()
+            siamese_images = np.zeros((2, 224, 224, 3), dtype=np.float32)
 
-                width = x2 - x1
-                height = y2 - y1
+            # Original box coordinates in image
+            x1, y1, x2, y2 = box.copy()
 
-                center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
-                size = 2.0*max(width, height)
+            width = x2 - x1
+            height = y2 - y1
 
-                size_half = np.ceil(size / 2)
-                motion = np.random.laplace(0, 1/5, (2,)) * [width, height]
-                scale = np.clip(np.random.laplace(1, 1/15), 0.6, 1.4)
+            center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
+            size = 2.0*max(width, height)
 
-                # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
-                sx1 = center[0] - size_half
-                sy1 = center[1] - size_half
+            size_half = np.ceil(size / 2)
+            motion = np.random.laplace(0, 1/15, (2,)) * [width, height]
+            scale = np.clip(np.random.laplace(1, 1/15), 0.6, 1.4)
 
-                sx2 = center[0] + size_half
-                sy2 = center[1] + size_half
+            # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
+            sx1 = center[0] - size_half
+            sy1 = center[1] - size_half
 
-                # Caclulate padding for static image
-                s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
-                s_pad_right = int(sx2 - image.shape[1]) if sx2 > image.shape[1] else 0
+            sx2 = center[0] + size_half
+            sy2 = center[1] + size_half
 
-                s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
-                s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
+            # Caclulate padding for static image
+            s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
+            s_pad_right = int(sx2 - image.shape[1]) if sx2 > image.shape[1] else 0
 
-                mx1 = center[0] - scale*(size_half - motion[0])
-                my1 = center[1] - scale*(size_half - motion[1])
+            s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
+            s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
 
-                mx2 = center[0] + scale*(size_half + motion[0])
-                my2 = center[1] + scale*(size_half + motion[1])
+            mx1 = center[0] - scale*(size_half - motion[0])
+            my1 = center[1] - scale*(size_half - motion[1])
 
-                # Calculate padding for moving image
-                m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
-                m_pad_right = int(mx2 - image.shape[1]) if mx2 > image.shape[1] else 0
+            mx2 = center[0] + scale*(size_half + motion[0])
+            my2 = center[1] + scale*(size_half + motion[1])
 
-                m_pad_top = int(abs(my1)) if my1 < 0 else 0
-                m_pad_bot = int(my2 - image.shape[0]) if my2 > image.shape[0] else 0
+            # Calculate padding for moving image
+            m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
+            m_pad_right = int(mx2 - image.shape[1]) if mx2 > image.shape[1] else 0
 
-                # Calculate joint padding between both images
-                pad_bot = max(s_pad_bot, m_pad_bot) + 100
-                pad_top = max(s_pad_top, m_pad_top) + 100
+            m_pad_top = int(abs(my1)) if my1 < 0 else 0
+            m_pad_bot = int(my2 - image.shape[0]) if my2 > image.shape[0] else 0
 
-                pad_left = max(s_pad_left, m_pad_left) + 100
-                pad_right = max(s_pad_right, m_pad_right) + 100
+            # Calculate joint padding between both images
+            pad_bot = max(s_pad_bot, m_pad_bot) + 100
+            pad_top = max(s_pad_top, m_pad_top) + 100
 
-                # Recalculate crop regions after padding
-                x1 += pad_left
-                x2 += pad_left
+            pad_left = max(s_pad_left, m_pad_left) + 100
+            pad_right = max(s_pad_right, m_pad_right) + 100
 
-                y1 += pad_top
-                y2 += pad_top
+            # Recalculate crop regions after padding
+            x1 += pad_left
+            x2 += pad_left
 
-                center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
+            y1 += pad_top
+            y2 += pad_top
 
-                sx1 = center[0] - size_half
-                sy1 = center[1] - size_half
+            center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
 
-                sx2 = center[0] + size_half
-                sy2 = center[1] + size_half
+            sx1 = center[0] - size_half
+            sy1 = center[1] - size_half
 
-                mx1 = center[0] - scale*(size_half - motion[0])
-                my1 = center[1] - scale*(size_half - motion[1])
+            sx2 = center[0] + size_half
+            sy2 = center[1] + size_half
 
-                mx2 = center[0] + scale*(size_half + motion[0])
-                my2 = center[1] + scale*(size_half + motion[1])
+            mx1 = center[0] - scale*(size_half - motion[0])
+            my1 = center[1] - scale*(size_half - motion[1])
 
-                # Pad the actual Image
-                image_padded = cv2.copyMakeBorder(image,
-                                                  pad_top, pad_bot, pad_left, pad_right,
-                                                  cv2.BORDER_CONSTANT, value=0)
+            mx2 = center[0] + scale*(size_half + motion[0])
+            my2 = center[1] + scale*(size_half + motion[1])
 
-                image_cropped = image_padded[int(sy1):int(sy2), int(sx1):int(sx2)]
-                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
-                siamese_images[0] = image_resized
+            # Pad the actual Image
+            image_padded = cv2.copyMakeBorder(image,
+                                              pad_top, pad_bot, pad_left, pad_right,
+                                              cv2.BORDER_CONSTANT, value=0)
 
-                image_cropped = image_padded[int(my1):int(my2), int(mx1):int(mx2)]
-                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
-                siamese_images[1] = image_resized
+            image_cropped = image_padded[int(sy1):int(sy2), int(sx1):int(sx2)]
+            image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+            siamese_images[0] = image_resized
 
-                batch_output_bbox[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
-                batch_output_bbox[i, 1] = 224*(y1 - my1)/(my2 - my1)
-                batch_output_bbox[i, 2] = 224*(x2 - mx1)/(mx2 - mx1)
-                batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
+            image_cropped = image_padded[int(my1):int(my2), int(mx1):int(mx2)]
+            image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+            siamese_images[1] = image_resized
 
-                # Jointly Normalize Both Images
-                siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
-                siamese_images /= np.std(siamese_images, axis=(0, 1, 2)) + np.finfo(np.float32).eps
+            batch_output_bbox[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
+            batch_output_bbox[i, 1] = 224*(y1 - my1)/(my2 - my1)
+            batch_output_bbox[i, 2] = 224*(x2 - mx1)/(mx2 - mx1)
+            batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
 
-                batch_input_static[i] = siamese_images[0]
-                batch_input_moving[i] = siamese_images[1]
+            # Jointly Normalize Both Images
+            siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
+            siamese_images /= np.std(siamese_images, axis=(0, 1, 2)) + np.finfo(np.float32).eps
 
-                i += 1
-                if i == self.batch_size:
-                    break
+            batch_input_static[i] = siamese_images[0]
+            batch_input_moving[i] = siamese_images[1]
 
-        return [batch_input_static, batch_input_moving], [batch_output_bbox, batch_output_class]
+            i += 1
+
+        outputs = []
+
+        if self.regr:
+            outputs.append(batch_output_bbox)
+        if self.cls:
+            outputs.append(batch_output_class)
+
+        return [batch_input_static, batch_input_moving], outputs
 
     @staticmethod
     # KITTI Format Labels
