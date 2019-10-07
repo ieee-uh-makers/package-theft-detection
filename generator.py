@@ -27,10 +27,12 @@ class SiameseSequence(Sequence):
         self.images_filenames = []
         self.labels = []
 
-        for r, d, f in os.walk(os.path.join(source_path, "images")):
-            for file in f:
-                self.images.append(os.path.join(r, file))
-                self.labels.append(os.path.join(source_path, "labels", (file.split(".")[0] + ".txt")))
+        with os.scandir(os.path.join(source_path, "images")) as it:
+            for entry in it:
+                if not entry.name.startswith('.') and entry.is_file():
+                    file = entry.name
+                    self.images.append(os.path.join(source_path, "images", file))
+                    self.labels.append(os.path.join(source_path, "labels", (file.split(".")[0] + ".txt")))
 
         self.batch_size = batch_size
         self.stage = stage
@@ -57,12 +59,12 @@ class SiameseSequence(Sequence):
 
         i = 0
         skip = 0
-        while i - skip < self.batch_size:
+        while i < self.batch_size:
 
             iidx = (idx * self.batch_size + i + skip) % int(self.batch_size*len(self))
 
             image = cv2.imread(self.images[iidx])
-            if image is None:
+            if image is None or image.shape[0] > 1024 or image.shape[1] > 1024:
                 skip += 1
                 continue
 
@@ -74,7 +76,13 @@ class SiameseSequence(Sequence):
 
             bboxes_xyxy = bboxes.to_xyxy_array()
 
-            idx = random.randrange(0, len(bboxes_xyxy))
+            if self.stage == "train":
+                idx = random.randrange(0, len(bboxes_xyxy))
+            elif self.stage == "val":
+                idx = 0
+            else:
+                raise ValueError
+
             box = bboxes_xyxy[idx]
 
             bbox = bboxes.bounding_boxes[idx]
@@ -96,7 +104,9 @@ class SiameseSequence(Sequence):
             size = 2.0*max(width, height)
 
             size_half = np.ceil(size / 2)
-            motion = np.random.laplace(0, 1/15, (2,)) * [width, height]
+            motion_x = np.clip(width*np.random.laplace(0, 1/5), -center[0], image.shape[1] - center[0])
+            motion_y = np.clip(width*np.random.laplace(0, 1/5), -center[1], image.shape[0] - center[1])
+            motion = np.array([motion_x, motion_y])
             scale = np.clip(np.random.laplace(1, 1/15), 0.6, 1.4)
 
             # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
@@ -203,10 +213,10 @@ class SiameseSequence(Sequence):
 
             bbox_class = fields[0]
 
-            bbox_x1 = float(fields[4])
-            bbox_y1 = float(fields[5])
-            bbox_x2 = float(fields[6])
-            bbox_y2 = float(fields[7])
+            bbox_x1 = float(fields[4]) * image.shape[1]
+            bbox_y1 = float(fields[5]) * image.shape[0]
+            bbox_x2 = float(fields[6]) * image.shape[1]
+            bbox_y2 = float(fields[7]) * image.shape[0]
 
             bbox = ia.BoundingBox(bbox_x1, bbox_y1, bbox_x2, bbox_y2, bbox_class)
             bboxes.append(bbox)
@@ -220,7 +230,6 @@ class SiameseSequence(Sequence):
         if stage == "train":
             return iaa.Sequential([
                 iaa.Fliplr(0.5),
-                iaa.Flipud(0.5),
                 iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
                            rotate=(-5, 5)),
                 iaa.SomeOf((0, 2), [
