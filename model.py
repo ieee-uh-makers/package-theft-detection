@@ -131,9 +131,9 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         return 1 - SS_res / (SS_tot + K.epsilon())
 
     if regr:
-        x = Dense(128, activation='relu', name='dense_1')(x)
-        x = Dense(128, activation='relu', name='dense_2')(x)
-        x = Dense(128, activation='relu', name='dense_3')(x)
+        x = Dense(256, activation='relu', name='dense_1')(x)
+        x = Dense(256, activation='relu', name='dense_2')(x)
+        x = Dense(256, activation='relu', name='dense_3')(x)
         layer_regr = Dense(4, name='regr')(x)
         outputs.append(layer_regr)
         loss_fns.append('mae')

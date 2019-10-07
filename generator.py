@@ -164,6 +164,10 @@ class SiameseSequence(Sequence):
             mx2 = center[0] + scale*(size_half + motion[0])
             my2 = center[1] + scale*(size_half + motion[1])
 
+            if sx1 < 0 or sx2 < 0 or sy1 < 0 or sy2 < 0 or mx1 < 0 or mx2 < 0 or my1 < 0 or my2 < 0:
+                skip += 1
+                continue
+
             # Pad the actual Image
             image_padded = cv2.copyMakeBorder(image,
                                               pad_top, pad_bot, pad_left, pad_right,

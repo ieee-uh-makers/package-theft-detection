@@ -34,7 +34,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          weights=None,
          workers: int = 12):
 
-    regr = True if stage == 'regr' else False
+    regr = True
     cls = True if stage == 'cls' else False
 
     model, loss_fns, metrics = build_model(regr=regr, cls=cls)
@@ -42,8 +42,8 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     if weights is not None:
         model.load_weights(weights, by_name=True)
 
-    train_seq = SiameseSequence(train_path, stage="train", batch_size=batch_size)
-    val_seq = SiameseSequence(val_path, stage="val", batch_size=batch_size)
+    train_seq = SiameseSequence(train_path, stage="train", batch_size=batch_size, cls=cls, regr=regr)
+    val_seq = SiameseSequence(val_path, stage="val", batch_size=batch_size, cls=cls, regr=regr)
 
     callbacks = []
 
@@ -58,8 +58,8 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
         filepath = "weights/%s_epoch {epoch:02d}_r2 {val_r2:.4f}.h5" % session
         checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
     elif stage == 'cls':
-        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_acc:.4f}.h5" % session
-        checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_cls_acc:.4f}.h5" % session
+        checkpoint = ModelCheckpoint(filepath, monitor='val_cls_acc', verbose=1, save_best_only=True, mode='max')
 
     callbacks.append(checkpoint)
 
