@@ -147,11 +147,11 @@ class SiameseSequence(Sequence):
             pad_right = max(s_pad_right, m_pad_right)
 
             # Recalculate crop regions after padding
-            x1 += pad_left
-            x2 += pad_left
+            px1 = x1 + pad_left
+            px2 = x2 + pad_left
 
-            y1 += pad_top
-            y2 += pad_top
+            py1 = y1 + pad_top
+            py2 = y2 + pad_top
 
             center += [pad_left, pad_top]
 
@@ -180,10 +180,10 @@ class SiameseSequence(Sequence):
             image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
             siamese_images[1] = image_resized
 
-            batch_output_bbox[i, 0] = 224*(x1 - mx1)/(mx2 - mx1)
-            batch_output_bbox[i, 1] = 224*(y1 - my1)/(my2 - my1)
-            batch_output_bbox[i, 2] = 224*(x2 - mx1)/(mx2 - mx1)
-            batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
+            batch_output_bbox[i, 0] = 224*(px1 - mx1)/(mx2 - mx1)
+            batch_output_bbox[i, 1] = 224*(py1 - my1)/(my2 - my1)
+            batch_output_bbox[i, 2] = 224*(px2 - mx1)/(mx2 - mx1)
+            batch_output_bbox[i, 3] = 224*(py2 - my1)/(my2 - my1)
 
             batch_input_static[i] = siamese_images[0]
             batch_input_moving[i] = siamese_images[1]
