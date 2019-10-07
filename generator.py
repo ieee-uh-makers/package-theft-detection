@@ -153,23 +153,19 @@ class SiameseSequence(Sequence):
             y1 += pad_top
             y2 += pad_top
 
-            center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
+            center += [pad_left, pad_top]
 
-            sx1 = center[0] - size_half
-            sy1 = center[1] - size_half
+            sx1 += pad_left
+            sy1 += pad_top
 
-            sx2 = center[0] + size_half
-            sy2 = center[1] + size_half
+            sx2 += pad_left
+            sy2 += pad_top
 
-            mx1 = center[0] - scale*(size_half - motion[0])
-            my1 = center[1] - scale*(size_half - motion[1])
+            mx1 += pad_left
+            my1 += pad_top
 
-            mx2 = center[0] + scale*(size_half + motion[0])
-            my2 = center[1] + scale*(size_half + motion[1])
-
-            if sx1 < 0 or sx2 < 0 or sy1 < 0 or sy2 < 0 or mx1 < 0 or mx2 < 0 or my1 < 0 or my2 < 0:
-                skip += 1
-                continue
+            mx2 += pad_left
+            my2 += pad_top
 
             # Pad the actual Image
             image_padded = cv2.copyMakeBorder(image,
