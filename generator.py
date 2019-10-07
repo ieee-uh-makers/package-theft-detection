@@ -85,11 +85,11 @@ class SiameseSequence(Sequence):
                 height = y2 - y1
 
                 center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
-                size = 1.25*max(width, height)
+                size = 2.0*max(width, height)
 
                 size_half = np.ceil(size / 2)
-                motion = np.round(0.05*size*(2*(np.random.random(size=(2,)) - 0.5)))
-                scale = 1 + 0.05*(2*(np.random.random() - 0.5))
+                motion = np.random.laplace(0, 1/5, (2,)) * [width, height]
+                scale = np.clip(np.random.laplace(1, 1/15), 0.6, 1.4)
 
                 # Calculate regions of interest and maximum padding: max(padding_static, padding_moving)
                 sx1 = center[0] - size_half
@@ -209,7 +209,7 @@ class SiameseSequence(Sequence):
                 iaa.Fliplr(0.5),
                 iaa.Flipud(0.5),
                 iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
-                           rotate=(-15, 15)),
+                           rotate=(-5, 5)),
                 iaa.SomeOf((0, 2), [
                     iaa.GaussianBlur(sigma=(0, 1.0)),
                     iaa.AdditiveGaussianNoise(scale=0.03 * 255)

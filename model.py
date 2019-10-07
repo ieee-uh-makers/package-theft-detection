@@ -154,7 +154,7 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
 
         return d_mse
 
-    return model, ['mse', 'binary_crossentropy'], {'regr': r2, 'cls': 'acc'}
+    return model, ['mae', 'binary_crossentropy'], {'regr': r2, 'cls': 'acc'}
 
 
 if __name__ == '__main__':
