@@ -3,6 +3,7 @@ import os
 from imgaug import augmenters as iaa
 import imgaug as ia
 from keras.utils import Sequence
+from keras.applications.mobilenet import preprocess_input
 import numpy as np
 import random
 
@@ -100,12 +101,14 @@ class SiameseSequence(Sequence):
             width = x2 - x1
             height = y2 - y1
 
-            center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
             size = 2.0*max(width, height)
 
+            center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
+
             size_half = np.ceil(size / 2)
+
             motion_x = np.clip(width*np.random.laplace(0, 1/5), -center[0], image.shape[1] - center[0])
-            motion_y = np.clip(width*np.random.laplace(0, 1/5), -center[1], image.shape[0] - center[1])
+            motion_y = np.clip(height*np.random.laplace(0, 1/5), -center[1], image.shape[0] - center[1])
             motion = np.array([motion_x, motion_y])
             scale = np.clip(np.random.laplace(1, 1/15), 0.6, 1.4)
 
@@ -117,11 +120,11 @@ class SiameseSequence(Sequence):
             sy2 = center[1] + size_half
 
             # Caclulate padding for static image
-            s_pad_left = int(abs(sx1)) if sx1 < 0 else 0
-            s_pad_right = int(sx2 - image.shape[1]) if sx2 > image.shape[1] else 0
+            s_pad_left = int(np.ceil(abs(sx1))) if sx1 < 0 else 0
+            s_pad_right = int(np.ceil(sx2 - image.shape[1])) if sx2 > image.shape[1] else 0
 
-            s_pad_top = int(abs(sy1)) if sy1 < 0 else 0
-            s_pad_bot = int(sy2 - image.shape[0]) if sy2 > image.shape[0] else 0
+            s_pad_top = int(np.ceil(abs(sy1))) if sy1 < 0 else 0
+            s_pad_bot = int(np.ceil(sy2 - image.shape[0])) if sy2 > image.shape[0] else 0
 
             mx1 = center[0] - scale*(size_half - motion[0])
             my1 = center[1] - scale*(size_half - motion[1])
@@ -130,18 +133,18 @@ class SiameseSequence(Sequence):
             my2 = center[1] + scale*(size_half + motion[1])
 
             # Calculate padding for moving image
-            m_pad_left = int(abs(mx1)) if mx1 < 0 else 0
-            m_pad_right = int(mx2 - image.shape[1]) if mx2 > image.shape[1] else 0
+            m_pad_left = int(np.ceil(abs(mx1))) if mx1 < 0 else 0
+            m_pad_right = int(np.ceil(mx2 - image.shape[1])) if mx2 > image.shape[1] else 0
 
-            m_pad_top = int(abs(my1)) if my1 < 0 else 0
-            m_pad_bot = int(my2 - image.shape[0]) if my2 > image.shape[0] else 0
+            m_pad_top = int(np.ceil(abs(my1))) if my1 < 0 else 0
+            m_pad_bot = int(np.ceil(my2 - image.shape[0])) if my2 > image.shape[0] else 0
 
             # Calculate joint padding between both images
-            pad_bot = max(s_pad_bot, m_pad_bot) + 100
-            pad_top = max(s_pad_top, m_pad_top) + 100
+            pad_bot = max(s_pad_bot, m_pad_bot)
+            pad_top = max(s_pad_top, m_pad_top)
 
-            pad_left = max(s_pad_left, m_pad_left) + 100
-            pad_right = max(s_pad_right, m_pad_right) + 100
+            pad_left = max(s_pad_left, m_pad_left)
+            pad_right = max(s_pad_right, m_pad_right)
 
             # Recalculate crop regions after padding
             x1 += pad_left
@@ -186,10 +189,6 @@ class SiameseSequence(Sequence):
             batch_output_bbox[i, 2] = 224*(x2 - mx1)/(mx2 - mx1)
             batch_output_bbox[i, 3] = 224*(y2 - my1)/(my2 - my1)
 
-            # Jointly Normalize Both Images
-            siamese_images -= np.mean(siamese_images, axis=(0, 1, 2))
-            siamese_images /= np.std(siamese_images, axis=(0, 1, 2)) + np.finfo(np.float32).eps
-
             batch_input_static[i] = siamese_images[0]
             batch_input_moving[i] = siamese_images[1]
 
@@ -201,6 +200,9 @@ class SiameseSequence(Sequence):
             outputs.append(batch_output_bbox)
         if self.cls:
             outputs.append(batch_output_class)
+
+        batch_input_static = preprocess_input(batch_input_static)
+        batch_input_moving = preprocess_input(batch_input_moving)
 
         return [batch_input_static, batch_input_moving], outputs
 
@@ -250,7 +252,7 @@ class SiameseSequence(Sequence):
 def main(batch_size: int = 1):
     import matplotlib.pyplot as plt
 
-    seq = SiameseSequence('train', stage='train')
+    seq = SiameseSequence('/home/carroll/Data/box_regr/train', stage='train', cls=True)
     for bidx in range(0, len(seq)):
 
         bins, bouts = seq.__getitem__(bidx)

@@ -100,7 +100,7 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier,
                                                 strides=(2, 2), block_id=12))
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier, block_id=13))
-    siamese_layers.extend([GlobalAveragePooling2D(name='gap')])
+    siamese_layers.extend([Flatten(name='flat')])
 
     layer_input_left = Input((224, 224, 3), name='input_left')
     layer_input_right = Input((224, 224, 3), name='input_right')
@@ -155,7 +155,12 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     model.summary()
 
     if weights == 'imagenet':
-        model.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
+        if alpha == 1.0:
+            model.load_weights('weights/mobilenet_1_0_224_tf_no_top.h5', by_name=True)
+        elif alpha == 0.25:
+            model.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
+        else:
+            raise ValueError
 
     if plot:
         from keras.utils import plot_model

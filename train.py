@@ -32,7 +32,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          train_path: str = 'train',
          val_path: str = 'val',
          weights=None,
-         workers: int = 12):
+         workers: int = 24):
 
     regr = True
     cls = True if stage == 'cls' else False
@@ -47,7 +47,12 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
 
     callbacks = []
 
-    model.compile(optimizer=RectifiedAdam(lr=0.0001, clipnorm=5.0), loss=loss_fns, metrics=metrics)
+    if cls:
+        lr = 0.001
+    else:
+        lr = 0.0001
+
+    model.compile(optimizer=RectifiedAdam(lr=lr, clipnorm=5.0), loss=loss_fns, metrics=metrics)
 
     try:
         os.mkdir('weights')
@@ -55,10 +60,10 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
         pass
 
     if stage == 'regr':
-        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_r2:.4f}.h5" % session
+        filepath = "weights/%s_epoch-{epoch:02d}_r2-{val_r2:.4f}.h5" % session
         checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
     elif stage == 'cls':
-        filepath = "weights/%s_epoch {epoch:02d}_r2 {val_cls_acc:.4f}.h5" % session
+        filepath = "weights/%s_epoch-{epoch:02d}_acc-{val_cls_acc:.4f}.h5" % session
         checkpoint = ModelCheckpoint(filepath, monitor='val_cls_acc', verbose=1, save_best_only=True, mode='max')
 
     callbacks.append(checkpoint)
