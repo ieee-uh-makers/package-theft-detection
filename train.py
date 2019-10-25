@@ -3,10 +3,11 @@ import plac
 import time
 
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, TensorBoard, EarlyStopping
+from keras.backend.tensorflow_backend import set_session
+import tensorflow as tf
 
 from model import build_model
-from adabound import AdaBound
-from rectified_adam import RectifiedAdam
+from keras.optimizers import SGD
 
 from generator import SiameseSequence
 
@@ -34,6 +35,11 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          weights=None,
          workers: int = 24):
 
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess = tf.Session(config=config)
+    set_session(sess)
+
     regr = True
     cls = True if stage == 'cls' else False
 
@@ -52,7 +58,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     else:
         lr = 0.0001
 
-    model.compile(optimizer=RectifiedAdam(lr=lr, clipnorm=5.0), loss=loss_fns, metrics=metrics)
+    model.compile(optimizer=SGD(lr=lr, momentum=0.9), loss=loss_fns, metrics=metrics)
 
     try:
         os.mkdir('weights')

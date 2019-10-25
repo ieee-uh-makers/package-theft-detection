@@ -1,6 +1,7 @@
 from keras.models import Model
 from keras.layers import *
 from keras import layers
+from keras.regularizers import l2
 import keras.backend as K
 
 
@@ -100,7 +101,10 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier,
                                                 strides=(2, 2), block_id=12))
     siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier, block_id=13))
-    siamese_layers.extend([Flatten(name='flat')])
+
+    # Rely on transfer learning
+    for layer in siamese_layers:
+        layer.trainable = False
 
     layer_input_left = Input((224, 224, 3), name='input_left')
     layer_input_right = Input((224, 224, 3), name='input_right')
@@ -130,9 +134,14 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
         return 1 - SS_res / (SS_tot + K.epsilon())
 
     if regr:
-        x = Dense(256, activation='relu', name='dense_1')(x)
-        x = Dense(256, activation='relu', name='dense_2')(x)
-        x = Dense(256, activation='relu', name='dense_3')(x)
+        x = Conv2D(256, 3, name='conv_1', kernel_regularizer=l2(0.01))(x)
+        x = ReLU(name='relu_1')(x)
+        x = Conv2D(256, 3, name='conv_2', kernel_regularizer=l2(0.01))(x)
+        x = ReLU(name='relu_2')(x)
+        x = Conv2D(256, 3, name='conv_3', kernel_regularizer=l2(0.01))(x)
+        x = ReLU(name='relu_3')(x)
+
+        x = Flatten()(x)
         layer_regr = Dense(4, name='regr')(x)
         outputs.append(layer_regr)
         loss_fns.append('mae')
@@ -146,11 +155,6 @@ def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot:
 
     model = Model(inputs=[layer_input_left, layer_input_right],
                   outputs=outputs)
-
-    if cls:
-        for layer in model.layers:
-            if layer.name != 'cls':
-                layer.trainable = False
 
     model.summary()
 

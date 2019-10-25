@@ -105,7 +105,7 @@ class SiameseSequence(Sequence):
 
             center = np.round((np.array([x1, y1]) + np.array([x2, y2])) / 2)
 
-            size_half = np.ceil(size / 2)
+            size_half = np.floor(size / 2)
 
             motion_x = np.clip(width*np.random.laplace(0, 1/5), -center[0], image.shape[1] - center[0])
             motion_y = np.clip(height*np.random.laplace(0, 1/5), -center[1], image.shape[0] - center[1])
@@ -172,13 +172,26 @@ class SiameseSequence(Sequence):
                                               pad_top, pad_bot, pad_left, pad_right,
                                               cv2.BORDER_CONSTANT, value=0)
 
-            image_cropped = image_padded[int(sy1):int(sy2), int(sx1):int(sx2)]
-            image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
-            siamese_images[0] = image_resized
+            try:
+                image_cropped = image_padded[int(sy1):int(sy2), int(sx1):int(sx2)]
+                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+                siamese_images[0] = image_resized
 
-            image_cropped = image_padded[int(my1):int(my2), int(mx1):int(mx2)]
-            image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
-            siamese_images[1] = image_resized
+                image_cropped = image_padded[int(my1):int(my2), int(mx1):int(mx2)]
+                image_resized = cv2.resize(image_cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+                siamese_images[1] = image_resized
+            except cv2.error:
+                print("Warning: invalid crop!")
+                print("sx1: %f" % sx1)
+                print("sx2: %f" % sx2)
+                print("sy1: %f" % sy1)
+                print("sy2: %f" % sy2)
+                print("mx1: %f" % mx1)
+                print("mx2: %f" % mx2)
+                print("my1: %f" % my1)
+                print("my2: %f" % my2)
+                skip += 1
+                continue
 
             batch_output_bbox[i, 0] = 224*(px1 - mx1)/(mx2 - mx1)
             batch_output_bbox[i, 1] = 224*(py1 - my1)/(my2 - my1)
