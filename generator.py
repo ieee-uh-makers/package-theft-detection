@@ -29,8 +29,8 @@ class ActivitySequence(Sequence):
         self.df_pos = self.df[self.df['theft_idx'] != -1]
         self.df_neg = self.df[self.df['theft_idx'] == -1]
 
-        self.sequences_pos = [str(uuid) for uuid in self.df_pos['uuid']]
-        self.sequences_neg = [str(uuid) for uuid in self.df_neg['uuid']]
+        self.sequences_pos = [str(uuid) for uuid in self.df_pos['uuid'].unique()]
+        self.sequences_neg = [str(uuid) for uuid in self.df_neg['uuid'].unique()]
 
         self.seq = ActivitySequence.create_augmenter(stage)
 
