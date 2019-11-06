@@ -1,177 +1,76 @@
-from keras.models import Model
 from keras.layers import *
-from keras import layers
-from keras.regularizers import l2
-import keras.backend as K
+from keras.models import Model
+from keras.applications import MobileNet
+from typing import Optional
 
 
-def _conv_block(filters, alpha, kernel=(3, 3), strides=(1, 1)):
-    channel_axis = -1
-    filters = int(filters * alpha)
+def build_model(stage: str = "train",
+                timesteps: int = 10,
+                input_shape: int = 225,
+                output_dims: int = 256,
+                weights: Optional[str] = None):
 
-    stack = []
+    layer_input_train_img = Input((timesteps, input_shape, input_shape, 3), name='input_img_sequence')
 
-    x = layers.ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv1_pad')
-    stack.append(x)
+    lstm_layers = [LSTM(output_dims, activation='tanh', name='lstm'),
+                   Dense(1, activation='sigmoid', name='cls')]
 
-    x = layers.Conv2D(filters, kernel,
-                      padding='valid',
-                      use_bias=False,
-                      strides=strides,
-                      name='conv1')
-    stack.append(x)
+    if stage == "train" or stage == "inf_cnn":
+        model_mnet = MobileNet(alpha=0.25, weights='imagenet', input_shape=(input_shape, input_shape, 3),
+                               include_top=False)
 
-    x = layers.BatchNormalization(axis=channel_axis, name='conv1_bn')
-    stack.append(x)
+        # Training Network
+        cnn_layers = [layer for layer in model_mnet.layers[2:]]
+        for layer in cnn_layers:
+            layer.trainable = False
+        cnn_layers.append(GlobalMaxPooling2D(name='gmp'))
+        cnn_layers.append(RepeatVector(1, name='repeat'))
 
-    x = layers.ReLU(6., name='conv1_relu')
-    stack.append(x)
+        if stage == "train":
 
-    return stack
+            cnn_features = []
+            for i in range(0, timesteps):
 
+                x = layer_input_train_img
+                x = Lambda(lambda x: x[:, i, :, :], name='input_image_timestep_%d' % (i + 1))(x)
 
-def _depthwise_conv_block(pointwise_conv_filters, alpha,
-                          depth_multiplier=1, strides=(1, 1), block_id=1):
+                for layer in cnn_layers:
+                    x = layer(x)
 
-    channel_axis = -1
-    pointwise_conv_filters = int(pointwise_conv_filters * alpha)
+                cnn_features.append(x)
 
-    stack = []
+            x = Concatenate(name='concat_features', axis=1)(cnn_features)
 
-    if strides != (1, 1):
-        x = layers.ZeroPadding2D(((0, 1), (0, 1)),
-                                 name='conv_pad_%d' % block_id)
-        stack.append(x)
+            for layer in lstm_layers:
+                x = layer(x)
 
-    x = layers.DepthwiseConv2D((3, 3),
-                               padding='same' if strides == (1, 1) else 'valid',
-                               depth_multiplier=depth_multiplier,
-                               strides=strides,
-                               use_bias=False,
-                               name='conv_dw_%d' % block_id)
-    stack.append(x)
+            model_train = Model(inputs=layer_input_train_img, outputs=x)
+            if weights is not None:
+                model_train.load_weights(weights, by_name=True)
 
-    x = layers.BatchNormalization(
-        axis=channel_axis, name='conv_dw_%d_bn' % block_id)
-    stack.append(x)
+            return model_train
+        elif stage == "inf_cnn":
+            # Convolution Inference Network
+            layer_input_inf_img = Input((input_shape, input_shape, input_shape), name='input_image')
 
-    x = layers.ReLU(6., name='conv_dw_%d_relu' % block_id)
-    stack.append(x)
+            x = layer_input_inf_img
+            for layer in cnn_layers:
+                x = layer(x)
 
-    x = layers.Conv2D(pointwise_conv_filters, (1, 1),
-                      padding='same',
-                      use_bias=False,
-                      strides=(1, 1),
-                      name='conv_pw_%d' % block_id)
-    stack.append(x)
+            model_inf_conv = Model(inputs=layer_input_inf_img, outputs=x)
+            if weights is not None:
+                model_inf_conv.load_weights(weights, by_name=True)
+            return model_inf_conv
 
-    x = layers.BatchNormalization(axis=channel_axis,
-                                  name='conv_pw_%d_bn' % block_id)
-    stack.append(x)
+    elif stage == "inf_lstm":
+        # LSTM Inference Network
+        layer_input_features = Input((timesteps, output_dims), name='input_features')
+        x = layer_input_features
+        for layer in lstm_layers:
+            x = layer(x)
 
-    x = layers.ReLU(6., name='conv_pw_%d_relu' % block_id)
-    stack.append(x)
+        model_inf_lstm = Model(inputs=layer_input_features, outputs=x)
+        if weights is not None:
+            model_inf_lstm.load_weights(weights, by_name=True)
+        return model_inf_lstm
 
-    return stack
-
-
-def build_model(alpha=0.25, depth_multiplier=1, weights: str = 'imagenet', plot: bool = False, cls: bool = False, regr: bool = True):
-    siamese_layers = []
-
-    siamese_layers.extend(_conv_block(32, alpha, strides=(2, 2)))
-    siamese_layers.extend(_depthwise_conv_block(64, alpha, depth_multiplier, block_id=1))
-
-    siamese_layers.extend(_depthwise_conv_block(128, alpha, depth_multiplier,
-                                                strides=(2, 2), block_id=2))
-    siamese_layers.extend(_depthwise_conv_block(128, alpha, depth_multiplier, block_id=3))
-
-    siamese_layers.extend(_depthwise_conv_block(256, alpha, depth_multiplier,
-                                                strides=(2, 2), block_id=4))
-    siamese_layers.extend(_depthwise_conv_block(256, alpha, depth_multiplier, block_id=5))
-
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier,
-                                                strides=(2, 2), block_id=6))
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=7))
-
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=8))
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=9))
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=10))
-    siamese_layers.extend(_depthwise_conv_block(512, alpha, depth_multiplier, block_id=11))
-
-    siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier,
-                                                strides=(2, 2), block_id=12))
-    siamese_layers.extend(_depthwise_conv_block(1024, alpha, depth_multiplier, block_id=13))
-
-    # Rely on transfer learning
-    for layer in siamese_layers:
-        layer.trainable = False
-
-    layer_input_left = Input((224, 224, 3), name='input_left')
-    layer_input_right = Input((224, 224, 3), name='input_right')
-
-    x = layer_input_left
-    for layer in siamese_layers:
-        x = layer(x)
-    layer_output_left = x
-
-    x = layer_input_right
-    for layer in siamese_layers:
-        x = layer(x)
-    layer_output_right = x
-
-    conc = Concatenate(name='regr_concat', axis=-1)([layer_output_left, layer_output_right])
-
-    x = conc
-
-    loss_fns = []
-    metrics = {}
-    outputs = []
-
-    def r2(y_true, y_pred):
-        from keras import backend as K
-        SS_res = K.sum(K.square(y_true - y_pred))
-        SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
-        return 1 - SS_res / (SS_tot + K.epsilon())
-
-    if regr:
-        x = Conv2D(256, 3, name='conv_1', kernel_regularizer=l2(0.01))(x)
-        x = ReLU(name='relu_1')(x)
-        x = Conv2D(256, 3, name='conv_2', kernel_regularizer=l2(0.01))(x)
-        x = ReLU(name='relu_2')(x)
-        x = Conv2D(256, 3, name='conv_3', kernel_regularizer=l2(0.01))(x)
-        x = ReLU(name='relu_3')(x)
-
-        x = Flatten()(x)
-        layer_regr = Dense(4, name='regr')(x)
-        outputs.append(layer_regr)
-        loss_fns.append('mae')
-        metrics['regr'] = r2
-
-    if cls:
-        layer_cls = Dense(1, activation='sigmoid', name='cls')(layer_output_left)
-        outputs.append(layer_cls)
-        loss_fns.append('binary_crossentropy')
-        metrics['cls'] = 'acc'
-
-    model = Model(inputs=[layer_input_left, layer_input_right],
-                  outputs=outputs)
-
-    model.summary()
-
-    if weights == 'imagenet':
-        if alpha == 1.0:
-            model.load_weights('weights/mobilenet_1_0_224_tf_no_top.h5', by_name=True)
-        elif alpha == 0.25:
-            model.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
-        else:
-            raise ValueError
-
-    if plot:
-        from keras.utils import plot_model
-        plot_model(model, to_file='model.png', show_shapes=True)
-
-    return model, loss_fns, metrics
-
-
-if __name__ == '__main__':
-    build_model(cls=True)

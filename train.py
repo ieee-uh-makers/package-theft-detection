@@ -9,12 +9,11 @@ import tensorflow as tf
 from model import build_model
 from keras.optimizers import SGD
 
-from generator import SiameseSequence
+from generator import ActivitySequence
 
 
 @plac.annotations(
     session=('Name of the training session', 'option', 'S', str),
-    stage=('Training stage (regr or cls)', 'option', 's', str),
     batch_size=('The training batch size', 'option', 'B', int),
     epochs=('Number of epochs to train', 'option', 'E', int),
     train_path=(
@@ -27,7 +26,6 @@ from generator import SiameseSequence
     workers=('Number of fit_generator workers', 'option', 'w', int)
 )
 def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
-         stage: str = 'regr',
          batch_size: int = 24,
          epochs: int = 384,
          train_path: str = 'train',
@@ -40,37 +38,25 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     sess = tf.Session(config=config)
     set_session(sess)
 
-    regr = True
-    cls = True if stage == 'cls' else False
-
-    model, loss_fns, metrics = build_model(regr=regr, cls=cls)
+    model, loss_fns, metrics = build_model()
 
     if weights is not None:
         model.load_weights(weights, by_name=True)
 
-    train_seq = SiameseSequence(train_path, stage="train", batch_size=batch_size, cls=cls, regr=regr)
-    val_seq = SiameseSequence(val_path, stage="val", batch_size=batch_size, cls=cls, regr=regr)
+    train_seq = ActivitySequence('csv/train.csv', train_path, stage="train", batch_size=batch_size)
+    val_seq = ActivitySequence('csv/val.csv', val_path, stage="val", batch_size=batch_size)
 
     callbacks = []
 
-    if cls:
-        lr = 0.001
-    else:
-        lr = 0.0001
-
-    model.compile(optimizer=SGD(lr=lr, momentum=0.9), loss=loss_fns, metrics=metrics)
+    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss=loss_fns, metrics=metrics)
 
     try:
         os.mkdir('weights')
     except FileExistsError:
         pass
 
-    if stage == 'regr':
-        filepath = "weights/%s_epoch-{epoch:02d}_r2-{val_r2:.4f}.h5" % session
-        checkpoint = ModelCheckpoint(filepath, monitor='val_r2', verbose=1, save_best_only=True, mode='max')
-    elif stage == 'cls':
-        filepath = "weights/%s_epoch-{epoch:02d}_acc-{val_cls_acc:.4f}.h5" % session
-        checkpoint = ModelCheckpoint(filepath, monitor='val_cls_acc', verbose=1, save_best_only=True, mode='max')
+    filepath = "weights/%s_epoch-{epoch:02d}_r2-{val_acc:.4f}.h5" % session
+    checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
 
     callbacks.append(checkpoint)
 
