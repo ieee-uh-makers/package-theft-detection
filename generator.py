@@ -26,13 +26,16 @@ class ActivitySequence(Sequence):
         self.delta_t = delta_t
 
         self.df = pd.read_csv(csv_path)
+        self.df_pos = self.df[self.df['theft_idx'] != -1]
+        self.df_neg = self.df[self.df['theft_idx'] == -1]
 
-        self.sequences = [str(uuid) for uuid in self.df['uuid'].unique()]
+        self.sequences_pos = [str(uuid) for uuid in self.df_pos['uuid']]
+        self.sequences_neg = [str(uuid) for uuid in self.df_neg['uuid']]
 
         self.seq = ActivitySequence.create_augmenter(stage)
 
     def __len__(self):
-        return int(2*np.floor(len(self.sequences) / float(self.batch_size)))
+        return int(np.floor(2*len(self.sequences_pos) / float(self.batch_size)))
 
     def __getitem__(self, idx):
         global cv2
@@ -51,33 +54,15 @@ class ActivitySequence(Sequence):
         while i < self.batch_size:
 
             iidx = idx * self.batch_size + i
-            uuid = self.sequences[iidx]
+            uuid = self.sequences_pos[iidx]
 
-            sequence = self.df[self.df['uuid'] == uuid].iloc[0]
+            sequence = self.df_pos[self.df['uuid'] == uuid].iloc[0]
 
             fps = sequence['fps']
             frames = sequence['frames']
             theft_idx = sequence['theft_idx']
 
-            # Negative Sample (Everything before theft)
-            neg_bound_start = 0
-            neg_bound_end = theft_idx - fps*self.delta_t*self.timesteps
-
-            neg_idx_start = np.random.randint(neg_bound_start, neg_bound_end)
-            neg_idx = neg_idx_start
-
-            for idx in range(0, self.timesteps):
-
-                img = cv2.imread(os.path.join(self.source_path, '%s_%d.png' % (uuid, neg_idx)))
-                img = seq_det.augment_image(img)
-                img = preprocess_input(img)
-
-                batch_input[i, idx] = img
-
-                neg_idx += fps*self.delta_t
-
-            i += 1
-            # Positive Sample (Including theft and non theft)
+            # Positive Sample
             pos_bound_start = theft_idx - fps*self.delta_t*self.timesteps
             pos_bound_end = min(theft_idx, frames - fps*self.delta_t*self.timesteps)
 
@@ -92,6 +77,36 @@ class ActivitySequence(Sequence):
                 batch_input[i, idx] = img
 
                 pos_idx += fps * self.delta_t
+
+            i += 1
+
+            # Negative Sample
+            if np.random.random() > 0.5:
+                # Use a completely negative sequence, otherwise use a negative part of the positive sequence
+                iidx = idx * self.batch_size + i
+
+                uuid = self.sequences_neg[iidx]
+                sequence = self.df_neg[self.df['uuid'] == uuid].iloc[0]
+
+                fps = sequence['fps']
+                frames = sequence['frames']
+                theft_idx = sequence['theft_idx']
+
+            neg_bound_start = 0
+            neg_bound_end = theft_idx - fps*self.delta_t*self.timesteps if theft_idx != -1 else frames - fps*self.delta_t*self.timesteps
+
+            neg_idx_start = np.random.randint(neg_bound_start, neg_bound_end)
+            neg_idx = neg_idx_start
+
+            for idx in range(0, self.timesteps):
+
+                img = cv2.imread(os.path.join(self.source_path, '%s_%d.png' % (uuid, neg_idx)))
+                img = seq_det.augment_image(img)
+                img = preprocess_input(img)
+
+                batch_input[i, idx] = img
+
+                neg_idx += fps*self.delta_t
 
             i += 1
 
