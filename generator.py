@@ -83,8 +83,6 @@ class ActivitySequence(Sequence):
             # Negative Sample
             if np.random.random() > 0.5:
                 # Use a completely negative sequence, otherwise use a negative part of the positive sequence
-                iidx = idx * self.batch_size + i
-
                 uuid = self.sequences_neg[iidx]
                 sequence = self.df_neg[self.df['uuid'] == uuid].iloc[0]
 
