@@ -11,7 +11,7 @@ class ActivitySequence(Sequence):
                  csv_path: str,
                  source_path: str,
                  timesteps: int = 10,
-                 delta_t: float = 2.0,
+                 delta_t: float = 1.0,
                  stage: str = "train",
                  batch_size: int = 32,
                  ):
