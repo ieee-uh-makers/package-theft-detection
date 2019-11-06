@@ -46,6 +46,7 @@ def build_model(stage: str = "train",
 
             model_train = Model(inputs=layer_input_train_img, outputs=x)
             if weights is not None:
+                model_train.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
                 model_train.load_weights(weights, by_name=True)
 
             return model_train
@@ -59,6 +60,7 @@ def build_model(stage: str = "train",
 
             model_inf_conv = Model(inputs=layer_input_inf_img, outputs=x)
             if weights is not None:
+                model_inf_conv.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
                 model_inf_conv.load_weights(weights, by_name=True)
             return model_inf_conv
 

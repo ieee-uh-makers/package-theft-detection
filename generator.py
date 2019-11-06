@@ -79,7 +79,7 @@ class ActivitySequence(Sequence):
             i += 1
             # Positive Sample (Including theft and non theft)
             pos_bound_start = theft_idx - fps*self.delta_t*self.timesteps
-            pos_bound_end = theft_idx
+            pos_bound_end = min(theft_idx, frames - fps*self.delta_t*self.timesteps)
 
             pos_idx_start = np.random.randint(pos_bound_start, pos_bound_end)
             pos_idx = pos_idx_start
