@@ -28,8 +28,8 @@ from generator import ActivitySequence
 def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          batch_size: int = 24,
          epochs: int = 384,
-         train_path: str = 'train',
-         val_path: str = 'val',
+         train_path: str = 'data',
+         val_path: str = 'data',
          weights=None,
          workers: int = 24):
 

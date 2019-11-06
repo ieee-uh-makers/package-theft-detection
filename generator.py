@@ -50,6 +50,10 @@ class ActivitySequence(Sequence):
 
         seq_det = self.seq.to_deterministic()
 
+        # Validation should always be the same
+        if self.stage == 'val':
+            np.random.seed(0)
+
         i = 0
         while i < self.batch_size:
 
