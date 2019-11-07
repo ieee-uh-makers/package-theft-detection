@@ -2,6 +2,7 @@ from keras.layers import *
 from keras.models import Model
 from keras.applications import MobileNet
 from typing import Optional
+from keras.regularizers import l2
 
 
 def build_model(stage: str = "train",
@@ -12,8 +13,8 @@ def build_model(stage: str = "train",
 
     layer_input_train_img = Input((timesteps, input_shape, input_shape, 3), name='input_img_sequence')
 
-    lstm_layers = [LSTM(output_dims, activation='tanh', name='lstm'),
-                   Dense(1, activation='sigmoid', name='cls')]
+    lstm_layers = [LSTM(output_dims, name='lstm'),
+                   Dense(1, activation='sigmoid', name='cls', kernel_regularizer=l2(0.001))]
 
     if stage == "train" or stage == "inf_cnn":
         model_mnet = MobileNet(alpha=0.25, weights='imagenet', input_shape=(input_shape, input_shape, 3),
@@ -32,7 +33,7 @@ def build_model(stage: str = "train",
             for i in range(0, timesteps):
 
                 x = layer_input_train_img
-                x = Lambda(lambda x: x[:, i, :, :], name='input_image_timestep_%d' % (i + 1))(x)
+                x = Lambda(lambda s: s[:, i, :, :], name='input_image_timestep_%d' % (i + 1))(x)
 
                 for layer in cnn_layers:
                     x = layer(x)
@@ -49,7 +50,10 @@ def build_model(stage: str = "train",
                 model_train.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
                 model_train.load_weights(weights, by_name=True)
 
-            return model_train
+            metrics = {'cls': 'accuracy'}
+            loss_fns = ['binary_crossentropy']
+
+            return model_train, loss_fns, metrics
         elif stage == "inf_cnn":
             # Convolution Inference Network
             layer_input_inf_img = Input((input_shape, input_shape, input_shape), name='input_image')
@@ -62,7 +66,8 @@ def build_model(stage: str = "train",
             if weights is not None:
                 model_inf_conv.load_weights('weights/mobilenet_2_5_224_tf_no_top.h5', by_name=True)
                 model_inf_conv.load_weights(weights, by_name=True)
-            return model_inf_conv
+
+            return model_inf_conv, None, None
 
     elif stage == "inf_lstm":
         # LSTM Inference Network
@@ -74,5 +79,11 @@ def build_model(stage: str = "train",
         model_inf_lstm = Model(inputs=layer_input_features, outputs=x)
         if weights is not None:
             model_inf_lstm.load_weights(weights, by_name=True)
-        return model_inf_lstm
+        return model_inf_lstm, None, None
+
+
+if __name__ == '__main__':
+    model, _, _ = build_model()
+    model.summary()
+
 

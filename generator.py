@@ -35,7 +35,7 @@ class ActivitySequence(Sequence):
         self.seq = ActivitySequence.create_augmenter(stage)
 
     def __len__(self):
-        return int(np.floor(2*len(self.sequences_pos) / float(self.batch_size)))
+        return int(np.floor(2 * len(self.sequences_pos) / float(self.batch_size)))
 
     def __getitem__(self, idx):
         global cv2
@@ -50,7 +50,7 @@ class ActivitySequence(Sequence):
 
         seq_det = self.seq.to_deterministic()
 
-        # Validation should always be the same
+        # Validation should always be the same for each batch
         if self.stage == 'val':
             np.random.seed(0)
 
@@ -67,8 +67,8 @@ class ActivitySequence(Sequence):
             theft_idx = sequence['theft_idx']
 
             # Positive Sample
-            pos_bound_start = theft_idx - fps*self.delta_t*self.timesteps
-            pos_bound_end = min(theft_idx, frames - fps*self.delta_t*self.timesteps)
+            pos_bound_start = theft_idx - fps * self.delta_t * self.timesteps
+            pos_bound_end = min(theft_idx, frames - fps * self.delta_t * self.timesteps)
 
             pos_idx_start = np.random.randint(pos_bound_start, pos_bound_end)
             pos_idx = pos_idx_start
@@ -95,20 +95,19 @@ class ActivitySequence(Sequence):
                 theft_idx = sequence['theft_idx']
 
             neg_bound_start = 0
-            neg_bound_end = theft_idx - fps*self.delta_t*self.timesteps if theft_idx != -1 else frames - fps*self.delta_t*self.timesteps
+            neg_bound_end = theft_idx - fps * self.delta_t * self.timesteps if theft_idx != -1 else frames - fps * self.delta_t * self.timesteps
 
             neg_idx_start = np.random.randint(neg_bound_start, neg_bound_end)
             neg_idx = neg_idx_start
 
             for idx in range(0, self.timesteps):
-
                 img = cv2.imread(os.path.join(self.source_path, '%s_%d.png' % (uuid, neg_idx)))
                 img = seq_det.augment_image(img)
                 img = preprocess_input(img)
 
                 batch_input[i, idx] = img
 
-                neg_idx += fps*self.delta_t
+                neg_idx += fps * self.delta_t
 
             i += 1
 
