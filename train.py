@@ -31,7 +31,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
          train_path: str = 'data',
          val_path: str = 'data',
          weights=None,
-         workers: int = 24):
+         workers: int = 4):
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -39,6 +39,7 @@ def main(session: str = time.strftime("%Y-%m-%d_%H-%M-%S"),
     set_session(sess)
 
     model, loss_fns, metrics = build_model()
+    model.summary()
 
     if weights is not None:
         model.load_weights(weights, by_name=True)

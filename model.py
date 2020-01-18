@@ -6,8 +6,8 @@ from keras.regularizers import l2
 
 
 def build_model(stage: str = "train",
-                timesteps: int = 10,
-                input_shape: int = 225,
+                timesteps: int = 5,
+                input_shape: int = 224,
                 output_dims: int = 256,
                 weights: Optional[str] = None):
 

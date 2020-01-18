@@ -5,13 +5,13 @@ import random
 
 @plac.annotations(
     csvpath=('Path to the sequence description CSV', 'option', 'c', str),
-    tvsplit=('Percentage of training data', 'option', float)
+    tvsplit=('Percentage of training data', 'option', 'v', float)
 )
-def main(csvpath: str = 'sequence.csv',
+def main(csvpath: str = 'sessions.csv',
          tvsplit: float = 0.8):
 
     # Repeatability
-    random.setstate(0)
+    random.seed(0)
 
     df = pd.read_csv(csvpath)
 
@@ -28,5 +28,5 @@ def main(csvpath: str = 'sequence.csv',
         df.iloc[idx[val_start_idx:val_end_idx]].to_csv('csv/val.csv', index=False)
 
 
-if __name__ == '__init__':
+if __name__ == '__main__':
     plac.call(main)
